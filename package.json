@@ -4,6 +4,8 @@
   "private": true,
   "description": "Page statique : analyse d'une photo de plante avec Google Gemini (type, vivante ou morte, consigne de tri).",
   "scripts": {
-    "dev": "npx --yes serve -l 8080 ."
+    "postinstall": "npm --prefix functions install",
+    "dev": "npx --yes firebase-tools emulators:start --only hosting,functions --project demo-deuil-fleurs",
+    "deploy": "npx --yes firebase-tools deploy --only hosting,functions"
   }
 }

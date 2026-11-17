@@ -4,6 +4,13 @@ node_modules/
 # Fichiers de configuration locaux / secrets
 .env
 .env.*
+.secret.local
+**/.secret.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
 
 # Système
 .DS_Store

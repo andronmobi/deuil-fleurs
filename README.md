@@ -6,46 +6,103 @@ Page web statique (HTML + JavaScript « vanilla » + Tailwind CSS via CDN) qui :
 2. l'envoie à l'API Google Gemini ;
 3. affiche le type de plante, si elle est vivante ou morte, et la consigne de tri.
 
-Pas de framework (pas de React), pas d'étape de build : on ouvre `index.html` via un petit serveur local.
+Pas de framework (pas de React), pas d'étape de build.
+
+## Pourquoi une fonction Firebase ?
+
+Tout ce qui est dans une page statique (HTML/JS) est visible par n'importe quel visiteur (clic droit → « Inspecter »). Une clé API mise dans le JavaScript serait donc **publique**, même si elle vient d'une variable d'environnement au moment du build.
+
+On fait donc passer l'appel par une petite **Cloud Function** :
+
+```
+navigateur ──(photo)──▶ /api/analyze (Cloud Function) ──(photo + clé secrète)──▶ Gemini
+```
+
+La clé reste sur le serveur, dans **Google Cloud Secret Manager**, et n'arrive jamais dans le navigateur.
 
 ## Structure
 
 ```
 deuil-fleurs/
-├── index.html      # la page (structure HTML + classes Tailwind)
-├── css/
-│   └── style.css   # styles personnalisés
-├── js/
-│   └── app.js      # caméra, import de photo, appel à Gemini
-└── package.json    # script « npm run dev » pour lancer un serveur local
+├── public/                 # ce qui est publié sur Firebase Hosting
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/app.js           # caméra, import de photo, appel à /api/analyze
+├── functions/              # code serveur (Cloud Functions)
+│   ├── index.js            # fonction "analyze" : appelle Gemini avec la clé secrète
+│   ├── package.json
+│   └── .secret.local.example
+├── firebase.json           # config Hosting + Functions + redirection /api/analyze
+└── package.json            # scripts npm run dev / npm run deploy
 ```
 
-## Lancer le projet
+## Lancer en local
 
-La caméra (`getUserMedia`) ne fonctionne que sur `http://localhost` ou en HTTPS — pas en ouvrant le fichier directement (`file://`). Il faut donc un petit serveur local.
+Prérequis : Node.js 22 et Java (pour l'émulateur Firebase).
 
-**Option 1 — terminal (Node.js installé) :**
+1. Installer les dépendances :
+
+   ```bash
+   npm install
+   ```
+
+2. Créer le fichier de la clé pour l'émulateur (il est ignoré par git) :
+
+   ```bash
+   cp functions/.secret.local.example functions/.secret.local
+   ```
+
+   puis remplacer `colle-ta-cle-ici` par la clé créée sur https://aistudio.google.com/apikey
+
+3. Démarrer :
+
+   ```bash
+   npm run dev
+   ```
+
+   puis ouvrir http://localhost:5050
+
+On peut ouvrir le dossier dans VS Code ou IntelliJ et lancer `npm run dev` depuis leur terminal intégré.
+
+## Déployer sur Firebase
+
+1. Dans la [console Firebase](https://console.firebase.google.com), créer un projet et passer au **forfait Blaze** (paiement à l'usage). C'est obligatoire pour Cloud Functions et Secret Manager. Le quota gratuit suffit largement pour un projet de classe ; on peut mettre une alerte de budget dans Google Cloud.
+
+2. Se connecter et lier le dossier au projet :
+
+   ```bash
+   npx firebase-tools login
+   ```
+
+   ```bash
+   npx firebase-tools use --add
+   ```
+
+3. **Enregistrer la clé Gemini comme secret** (la commande demande de coller la valeur, qui n'apparaît pas à l'écran) :
+
+   ```bash
+   npx firebase-tools functions:secrets:set GEMINI_API_KEY
+   ```
+
+4. Déployer :
+
+   ```bash
+   npm run deploy
+   ```
+
+Pour changer la clé plus tard : refaire l'étape 3, puis `npm run deploy` (la fonction utilise toujours la dernière version du secret au déploiement).
+
+Commandes utiles :
 
 ```bash
-npm run dev
+npx firebase-tools functions:secrets:access GEMINI_API_KEY
 ```
-
-puis ouvrir http://localhost:8080
-
-**Option 2 — VS Code :** installer l'extension recommandée *Live Server* (VS Code la propose à l'ouverture du dossier), puis clic droit sur `index.html` → *Open with Live Server*.
-
-**Option 3 — IntelliJ / WebStorm :** ouvrir le dossier, ouvrir `index.html`, puis cliquer sur l'icône de navigateur en haut à droite de l'éditeur (serveur intégré).
-
-**Option 4 — Python :**
 
 ```bash
-python3 -m http.server 8080
+npx firebase-tools functions:secrets:destroy GEMINI_API_KEY
 ```
 
-## Clé API Gemini
+## Limites à connaître
 
-Créer une clé sur https://aistudio.google.com/apikey et la coller dans le champ de la page. Ne jamais la mettre dans le code ni la committer.
-
-## Tester sur un téléphone
-
-Sur le téléphone, le bouton « Importer » permet de choisir une photo ou d'en prendre une. Pour la caméra en direct, la page doit être servie en HTTPS (par ex. via GitHub Pages ou un tunnel type `ngrok`), car `http://<ip-du-pc>:8080` n'est pas considéré comme sécurisé.
+- **N'importe qui peut appeler `/api/analyze`** et consommer le quota Gemini. La fonction limite déjà les modèles autorisés et le nombre d'instances (`maxInstances: 5`). Pour aller plus loin : Firebase App Check, ou une limite de requêtes.
+- **Caméra en direct** : elle ne marche que sur `localhost` ou en HTTPS. Une fois déployé sur Firebase (HTTPS), elle marche aussi sur téléphone.
