@@ -20,13 +20,50 @@ const PROMPT = `Analyse cette image de plante. Réponds précisément sous forme
 - "is_dead": (booléen true si la plante est morte, false si elle est vivante)
 - "is_pollinator": (booléen true si c'est une plante pollinisatrice reconnue, false sinon)`;
 
+// Codes Gemini temporaires : 429 (quota/débit), 500, 503 (modèle surchargé)
+const RETRYABLE_STATUSES = new Set([429, 500, 503]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function callGemini(model, payload) {
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": GEMINI_API_KEY.value(),
+            },
+            body: JSON.stringify(payload),
+        }
+    );
+    return response.json();
+}
+
+// Essaie le modèle choisi (2 tentatives), puis les autres modèles autorisés
+// si Gemini est surchargé. Renvoie la dernière réponse (succès ou erreur).
+async function callGeminiWithFallback(selectedModel, payload) {
+    const models = [selectedModel, ...ALLOWED_MODELS.filter((m) => m !== selectedModel)];
+    let data;
+    for (const model of models) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            data = await callGemini(model, payload);
+            if (!data.error || !RETRYABLE_STATUSES.has(data.error.code)) {
+                return data;
+            }
+            logger.warn(`Gemini indisponible (${model}, tentative ${attempt})`, data.error.message);
+            if (attempt < 2) await sleep(1000);
+        }
+    }
+    return data;
+}
+
 exports.analyze = onRequest(
     {
         region: "europe-west1",
         secrets: [GEMINI_API_KEY],
         maxInstances: 5, // limite les coûts en cas d'abus
         memory: "256MiB",
-        timeoutSeconds: 60,
+        timeoutSeconds: 120, // laisse le temps aux nouvelles tentatives
     },
     async (req, res) => {
         if (req.method !== "POST") {
@@ -57,22 +94,16 @@ exports.analyze = onRequest(
         };
 
         try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": GEMINI_API_KEY.value(),
-                    },
-                    body: JSON.stringify(payload),
-                }
-            );
-            const data = await response.json();
+            const data = await callGeminiWithFallback(selectedModel, payload);
 
             if (data.error) {
                 logger.error("Erreur Gemini", data.error);
-                res.status(502).json({ error: data.error.message });
+                const busy = RETRYABLE_STATUSES.has(data.error.code);
+                res.status(busy ? 503 : 502).json({
+                    error: busy
+                        ? "Gemini est surchargé pour le moment, réessayez dans quelques instants."
+                        : data.error.message,
+                });
                 return;
             }
 
