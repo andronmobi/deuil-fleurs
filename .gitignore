@@ -1,0 +1,19 @@
+# Dépendances
+node_modules/
+
+# Fichiers de configuration locaux / secrets
+.env
+.env.*
+
+# Système
+.DS_Store
+Thumbs.db
+
+# IntelliJ / WebStorm
+.idea/
+*.iml
+
+# VS Code (on garde les recommandations partagées)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

@@ -1,0 +1,9 @@
+{
+  "name": "deuil-fleurs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Page statique : analyse d'une photo de plante avec Google Gemini (type, vivante ou morte, consigne de tri).",
+  "scripts": {
+    "dev": "npx --yes serve -l 8080 ."
+  }
+}
