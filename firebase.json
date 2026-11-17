@@ -1,0 +1,26 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/analyze",
+        "function": {
+          "functionId": "analyze",
+          "region": "europe-west1"
+        }
+      }
+    ]
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22",
+    "ignore": ["node_modules", ".git", "*.local", ".secret.local.example"]
+  },
+  "emulators": {
+    "functions": { "port": 5001 },
+    "hosting": { "port": 5050 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
+}

@@ -5,7 +5,6 @@ const placeholder = document.getElementById('placeholder');
 const snapBtn = document.getElementById('snapBtn');
 const fileInput = document.getElementById('fileInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
-const apiKeyInput = document.getElementById('apiKey');
 const modelSelect = document.getElementById('modelSelect');
 const resultCard = document.getElementById('resultCard');
 const loader = document.getElementById('loader');
@@ -77,62 +76,37 @@ function enableAnalyze() {
     }
 }
 
-// Appel à l'API Gemini
+// Analyse : on envoie l'image à notre fonction Firebase (/api/analyze),
+// qui appelle Gemini avec la clé API gardée secrète côté serveur.
 analyzeBtn.addEventListener('click', async () => {
-    const apiKey = apiKeyInput.value.trim();
     const selectedModel = modelSelect.value;
 
-    if (!apiKey) {
-        alert("Veuillez entrer votre clé API Gemini.");
-        return;
-    }
     if (!currentImageBase64) return;
 
     loader.classList.remove('hidden');
     resultCard.classList.add('hidden');
     analyzeBtn.disabled = true;
 
-    const base64Data = currentImageBase64.split(',')[1];
-
-    const promptText = `Analyse cette image de plante. Réponds précisément sous forme JSON strict avec uniquement ces 3 clés :
-    - "type": (le nom ou type de la plante, ex: "un rosier", "une orchidée", etc.)
-    - "is_dead": (booléen true si la plante est morte, false si elle est vivante)
-    - "is_pollinator": (booléen true si c'est une plante pollinisatrice reconnue, false sinon)`;
-
-    const payload = {
-        contents: [
-            {
-                parts: [
-                    { text: promptText },
-                    {
-                        inline_data: {
-                            mime_type: "image/jpeg",
-                            data: base64Data
-                        }
-                    }
-                ]
-            }
-        ]
-    };
-
     try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`, {
+        const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ image: currentImageBase64, model: selectedModel })
         });
 
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error.message);
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error(
+                `Le serveur n'a pas renvoyé de JSON (HTTP ${response.status}). ` +
+                `Ouvrez la page via l'émulateur Firebase (http://localhost:5050) ou le site déployé, pas via Live Server.`
+            );
         }
 
-        const textResponse = data.candidates[0].content.parts[0].text;
+        const result = await response.json();
 
-        // Nettoyage du markdown JSON
-        const cleanJson = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-        const result = JSON.parse(cleanJson);
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `Erreur HTTP ${response.status}`);
+        }
 
         const plantType = result.type || "plante";
         const isDead = result.is_dead === true;
